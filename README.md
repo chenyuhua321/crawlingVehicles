@@ -117,7 +117,7 @@ for link in ullist:
 File.close()
 ```
 最后我们得到了车辆信息的具体信息，主要的参数放在了paramItems里。这里有些比较操蛋的是，这个json字符串里有些数据居然是直接带js样式的比如这个
-**"value": "<span class='hs_kw0_configpl'></span>A3 2019款 Spo**rtback 35 TFSI 进取型 <span class='hs_kw1_configpl'></span>V"}]
+`"value": "<span class='hs_kw0_configpl'></span>A3 2019款 Spo**rtback 35 TFSI 进取型 <span class='hs_kw1_configpl'></span>`
 
 后来由于汽车之家没有我想要的车辆vin码信息。我转而爬取了工信部的车辆信息。所以这方面对json数据的处理我也没有花精力去做。如果想要得到干净的数据。我们还可以采取另一种方法，直接得到网页动态渲染后的数据。这也是我在爬取工信部车辆数据所采用的方法。就是利用了selenium模块来模拟真实的浏览器请求。同时工信部获取车辆具体数据的接口还需要过一个滑动验证码的验证，同样可以利用selenium模块进行破解。关于这一部分的记录，等我有空了下回再写吧，因为还有一些问题没有处理完，一个就是python的多线程追加写入文件，如何保证写入的数据的线程安全。不过相关代码已上传到github上：[https://github.com/chenyuhua321/crawlingVehicles]()
 
