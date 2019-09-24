@@ -1,38 +1,49 @@
 # -*- coding: utf-8 -*-
 import time
 import re
+import json
 from selenium import webdriver
 from bs4 import BeautifulSoup
 from realGetVin import getVin
+import threading
 from threading import Thread
 import codecs
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import openpyxl
-import pymysql
-import portalocker
+import Queue
 
 import sys
 reload(sys)
 sys.setdefaultencoding('utf8')
 '''爬取工信部车辆信息'''
-class findVin(object):
-    def __init__(self, time2wait=10):
+class findVin(threading.Thread):
+    def __init__(self,queue, time2wait=10):
         self.chromeOptions = webdriver.ChromeOptions()
+        #self.chromeOptions.add_argument('--headless')
+        #self.chromeOptions.add_argument('--disable-gpu')
+        self.driver = webdriver.Chrome(chrome_options=self.chromeOptions)
+        #self.firefoxOptions = webdriver.FirefoxOptions()
         # 设置代理
-        self.chromeOptions.add_argument("--proxy-server=http://218.240.53.53:8090")
+        #self.firefoxOptions.add_argument('--headless')
+        #self.firefoxOptions.add_argument('--disable-gpu')
         # 一定要注意，=两边不能有空格，不能是这样--proxy-server = http://202.20.16.82:10152
-        self.driver = webdriver.Chrome(chrome_options = self.chromeOptions)
+        #self.driver = webdriver.Firefox(firefox_options = self.firefoxOptions)
+
         self.driver.get('http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryByPc?pc=173&querylb=cp&qyinfolb=')
         self.driver.implicitly_wait(5)
         self.wait = WebDriverWait(self.driver, time2wait)
-
         self.driver.find_element_by_id("query_qymc_input").send_keys(u"公司")
         self.driver.find_element_by_id("query_button").click()
+
         self.count =1
         self.vehicount =1
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.thread_stop = False
+
 
     def printclick(self,allTypes):
         soup = BeautifulSoup(self.driver.page_source, 'html.parser')
@@ -70,6 +81,10 @@ class findVin(object):
         allType.append(Id)
         allType.append(batch)
         allTypes.append(allType)
+        WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'query_result_cph_link')))
+        query_result_cph_links = self.driver.find_elements_by_class_name('query_result_cph_link')
+        for query_result in query_result_cph_links:
+            query_result.click()
         if(pagesize != self.count):
             input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, 'query_goto_page')))
             #input = driver.find_element_by_id('query_goto_page')
@@ -83,12 +98,7 @@ class findVin(object):
             print len(allTypes)
         return allTypes
 
-    def finVin(self,ws,tag,gid,batch):
-        connent = pymysql.connect(host='localhost', user='root', passwd='123456', db='youjia', charset='utf8mb4')
-        cursor = connent.cursor()
-
-        print self.vehicount
-        self.vehicount+1
+    def finVin(self,tag,gid,batch):
         time_begin = time.time()
         vehicledata = None
         while vehicledata == None :
@@ -97,27 +107,25 @@ class findVin(object):
             while len(vehicledata)<3:
                 vehicledata = getVin(tag,gid,batch)
         print vehicledata
+        print '--------------------------'
         time_end = time.time()
         alltime = time_end - time_begin
-        print ('time:',alltime)
+        print ('time:', alltime)
         title = []
         entity = []
         for vehi in vehicledata[1]:
             title.append(vehi.decode('utf-8'))
         for realdata in vehicledata[2]:
             entity.append(realdata.decode('utf-8'))
-        s = str(entity[0:41]).decode('utf-8')
-        s = s.replace('[','')
-        s =s.replace(']','')
-        sql = "insert into 173vehicle values("+s.decode('utf-8')+")"
-        print(sql)
-        cursor.execute(sql)
-        connent.commit()
+        print self.vehicount
+        self.vehicount = self.vehicount+1
+        alldata = []
+        alldata.append(title)
+        alldata.append(entity)
+        q.put(alldata)
+        print ('==================')
         print len(title)
         print len(entity)
-        ws.append(title)
-        ws.append(entity)
-
 
     def toexcel(self,data):
         wbo = openpyxl.Workbook()
@@ -132,25 +140,52 @@ class findVin(object):
                 gid.append(da[1][ln])
                 pc.append(da[2][ln])
         print len(tag)
-        with ThreadPoolExecutor(10) as executor1:
-            for lend in range(len(tag)):
-                wb = openpyxl.load_workbook('173allvehicle.xlsx')
-                #portalocker.flock(wb.fileno(), portalocker.LOCK_EX)
-                ws = wb['173vehicle']
-                executor1.submit(self.finVin,ws,tag[lend],gid[lend],pc[lend])
-                wb.save('173allvehicle.xlsx')
-                #portalocker.flock(wb.fileno(),portalocker.LOCK_UN)
+        executor = ThreadPoolExecutor(max_workers=5)
+        all_task = [ executor.submit(self.finVin,tag[lend],gid[lend],pc[lend]) for lend in range(len(tag))]
+
+        for future in as_completed(all_task):
+            data = future.result()
+            print("in main: get page {}s success".format(data))
+
+    def run(self):
+        while not self.thread_stop:
+            print("thread%d %s: waiting for tast" % (self.ident, self.name))
+            try:
+                task = q.get(block=True, timeout=2)  # 接收消息
+            except Queue.Empty:
+                print("Nothing to do! I will go home!")
+                self.thread_stop = True
+                break
+            print("I am working")
+            wb = openpyxl.load_workbook('173allvehicle.xlsx')
+            ws = wb['173vehicle']
+            ws.append(task[0])
+            ws.append(task[1])
+            wb.save('173allvehicle.xlsx')
+            time.sleep(3)
+            print("work finished!")
+            q.task_done()                           # 完成一个任务
+            res = q.qsize()                         # 判断消息队列大小(队列中还有几个任务)
+            if res > 0:
+                print("Still %d tasks to do" % (res))
+
+    def stop(self):
+        self.thread_stop = True
 
 
 if __name__ == '__main__':
-    a = findVin()
+    print 'begin find'
+    q = Queue.Queue(10)
+    a = findVin(q)
     alltype = []
     time.sleep(1)
     allbegin = time.time()
     data = a.printclick(alltype)
-    a.toexcel(data)
+    a.toexcel(data)                                  # 将队列加入类中
+    a.start()
     allend = time.time()
     alltime = allend - allbegin
+
     print ('alltime:',alltime)
 
 

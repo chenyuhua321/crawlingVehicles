@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from selenium import webdriver
+import json
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -21,15 +22,22 @@ sys.setdefaultencoding('utf8')
 
 class yiDundriver(object):
     def __init__(self, url, time2wait=10):
-        self.chromeOptions = webdriver.ChromeOptions()
+        self.chromeOptions =webdriver.ChromeOptions()
+
+        #self.chromeOptions.add_argument('user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36"')
+        #self.chromeOptions.add_argument('Accept="text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3"')
+        #self.chromeOptions.add_argument('Accept-Encoding="gzip, deflate"')
+        #self.chromeOptions.add_argument('Accept-Language="zh-CN,zh;q=0.9,en;q=0.8"')
+        #self.chromeOptions.add_argument('Proxy-Connection="keep-alive"')
+        self.chromeOptions.add_argument('Referer="http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/index"')
+        self.browser = webdriver.Chrome(chrome_options= self.chromeOptions)
         self.url = url
-        # 设置代理
-        self.chromeOptions.add_argument("--proxy-server=http://218.240.53.53:8090")
-        # 一定要注意，=两边不能有空格，不能是这样--proxy-server = http://202.20.16.82:10152
-        self.browser = webdriver.Chrome(chrome_options = self.chromeOptions)
+        #self.firefoxOptions = webdriver.FirefoxOptions()
+        #self.browser = webdriver.Firefox(firefox_options= self.firefoxOptions)
         self.browser.set_window_size(500,800)
         self.browser.implicitly_wait(10)
         self.browser.get(url)
+        print self.browser.get_cookies()
         self.browser.implicitly_wait(5)
         self.wait = WebDriverWait(self.browser, time2wait)
 
@@ -73,8 +81,10 @@ class yiDundriver(object):
             title = soup.find('title')
             print title
             if title.get_text() == '禁止访问':
+                print 'wdnmd'
                 self.browser.quit()
-                yiDundriver(self.url)
+                a = yiDundriver(self.url)
+                a.verifySlideCode()
                 return
             table = soup.find('table',{'class':'query_result_table'})
             tbody = table.find('tbody')
@@ -98,6 +108,7 @@ class yiDundriver(object):
         #尝试attempt_times次滑动验证，返回是否验证通过
         try:
             self.wait.until(EC.text_to_be_present_in_element((By.CLASS_NAME,"yidun_tips__text"), r"向右拖动滑块填充拼图"))
+
             data = []
             for attempt in range(attempt_times):
 
@@ -108,6 +119,11 @@ class yiDundriver(object):
                         return data1
                 except Exception as e:
                     print(e)
+                    soup = BeautifulSoup(self.browser.page_source, 'html.parser')
+                    yidun_tips__text = soup.find('span',{'class':'yidun_tips__text'})
+                    if yidun_tips__text.get_text() == '失败过多，点此重试':
+                        print '失败过多'
+                        self.browser.quit()
                     ActionChains(self.browser).release().perform()
                     refresh = self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "yidun_refresh")))
                     refresh.click()
@@ -115,8 +131,9 @@ class yiDundriver(object):
             data.append(False)
             return data
         except Exception:
-            yiDundriver(self.url)
-
+            self.browser.quit()
+            a = yiDundriver(self.url)
+            a.verifySlideCode()
 def getVin(dataTag,gid,pc):
 
     drv = yiDundriver('http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryCpData?dataTag='+dataTag+'&gid='+gid+'&pc='+pc+'')

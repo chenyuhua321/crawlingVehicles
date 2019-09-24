@@ -3,12 +3,14 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import time
-
+from Queue import Queue
+q=Queue(max)
 def sayhello(a):
     print("hello: "+a)
     time.sleep(2)
 
 def main():
+
     seed=["a","b","c"]
     seed1=["1","2","3"]
     start1=time.time()
