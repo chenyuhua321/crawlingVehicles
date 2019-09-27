@@ -7,12 +7,16 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed,ProcessPoolExecutor
 import xlsxwriter
 from xlwt import *
 from image_match import distance
 from image_match import get_tracks
 from image_match import getSlideInstance
 from bs4 import BeautifulSoup
+import redis
+from fake_useragent  import UserAgent
+import random
 import pandas
 
 from pandas.core.frame import DataFrame
@@ -22,23 +26,43 @@ sys.setdefaultencoding('utf8')
 
 class yiDundriver(object):
     def __init__(self, url, time2wait=10):
-        self.chromeOptions =webdriver.ChromeOptions()
 
-        #self.chromeOptions.add_argument('user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36"')
-        #self.chromeOptions.add_argument('Accept="text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3"')
-        #self.chromeOptions.add_argument('Accept-Encoding="gzip, deflate"')
-        #self.chromeOptions.add_argument('Accept-Language="zh-CN,zh;q=0.9,en;q=0.8"')
-        #self.chromeOptions.add_argument('Proxy-Connection="keep-alive"')
-        self.chromeOptions.add_argument('Referer="http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/index"')
-        self.browser = webdriver.Chrome(chrome_options= self.chromeOptions)
+        '''self.firefoxOptions.add_argument('Accept="text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3"')
+        self.firefoxOptions.add_argument('Accept-Encoding="gzip, deflate"')
+        self.firefoxOptions.add_argument('Accept-Language="zh-CN,zh;q=0.9,en;q=0.8"')
+        self.firefoxOptions.add_argument('Proxy-Connection="keep-alive"')
+        self.firefoxOptions.add_argument('Referer="http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryByPc?pc=173&querylb=cp&qyinfolb="')'''
+        '''self.firefoxOptions =webdriver.FirefoxOptions()
+        self.firefoxOptions.add_argument("user-data-dir=selenium")
+        self.firefoxOptions.add_argument("")
+        self.browser = webdriver.Firefox(firefox_options= self.firefoxOptions)'''
+        #self.browser = webdriver.Edge()
+        '''self.firefoxOptions = webdriver.FirefoxOptions()'''
+
+        self.browser = webdriver.Chrome()
+
+        #options.add_argument('user-agent="Mozilla/5.0 (iPod; U; CPU iPhone OS 2_1 like Mac OS X; ja-jp) AppleWebKit/525.18.1 (KHTML, like Gecko) Version/3.1.1 Mobile/5F137 Safari/525.20"')
+        #self.browser = webdriver.Chrome(chrome_options= self.chromeOptions)
         self.url = url
         #self.firefoxOptions = webdriver.FirefoxOptions()
-        #self.browser = webdriver.Firefox(firefox_options= self.firefoxOptions)
         self.browser.set_window_size(500,800)
         self.browser.implicitly_wait(10)
+
+        '''self.browser.get("http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryByPc?pc=173&querylb=cp&qyinfolb=")
+        js = 'window.open("'+url+'");'
+        self.browser.execute_script(js)
+        handles = self.browser.window_handles
+        self.browser.switch_to_window(handles[1])'''
         self.browser.get(url)
+        with open("cookies.json", "r") as fp:
+            cookies = json.load(fp)
+        for cookie in cookies:
+            # cookie.pop('domain')  # 如果报domain无效的错误
+            self.browser.add_cookie(cookie)
         print self.browser.get_cookies()
+        self.browser.delete_all_cookies()
         self.browser.implicitly_wait(5)
+        self.count = 0
         self.wait = WebDriverWait(self.browser, time2wait)
 
     def __clickVerifyBtn(self):
@@ -73,19 +97,29 @@ class yiDundriver(object):
         time.sleep(3)
         cur_loc_x = slider.location["x"]
         data = []
-        if cur_loc_x > slider_loc_x:
+        self.wait.until(EC.presence_of_element_located((By.NAME, "NECaptchaValidate")))
+        soup = BeautifulSoup(self.browser.page_source, 'html.parser')
+        yidun_tips__text = soup.find('input',{'name':'NECaptchaValidate'})
+        yidun_tips__textvalue = yidun_tips__text['value']
+        print yidun_tips__text['value']
+        tips = yidun_tips__text['value']
+        if len(tips) >1:
+            pool = redis.ConnectionPool(host='localhost', port=6379)
+            red = redis.Redis(connection_pool=pool)
+            red.sadd('NECaptchaValidate',str(tips))
+            print '存入redis'
+        '''if len(yidun_tips__textvalue) > 1:
             print("success")
             butt = self.browser.find_element_by_id('submit-btn')
             butt.click()
+            self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "query_result_table")))
             soup = BeautifulSoup(self.browser.page_source, 'html.parser')
             title = soup.find('title')
             print title
             if title.get_text() == '禁止访问':
-                print 'wdnmd'
-                self.browser.quit()
+                self.browser.close()
                 a = yiDundriver(self.url)
                 a.verifySlideCode()
-                return
             table = soup.find('table',{'class':'query_result_table'})
             tbody = table.find('tbody')
             titletds = tbody.find_all('td',{'valign':'top'})
@@ -102,7 +136,7 @@ class yiDundriver(object):
             return data
         else:
             data.append(False)
-            return data
+            return data'''
 
     def verifySlideCode(self,attempt_times=10):
         #尝试attempt_times次滑动验证，返回是否验证通过
@@ -118,26 +152,38 @@ class yiDundriver(object):
                         self.browser.quit()
                         return data1
                 except Exception as e:
-                    print(e)
+                    print (e)
                     soup = BeautifulSoup(self.browser.page_source, 'html.parser')
                     yidun_tips__text = soup.find('span',{'class':'yidun_tips__text'})
                     if yidun_tips__text.get_text() == '失败过多，点此重试':
                         print '失败过多'
                         self.browser.quit()
+                        data.append(False)
+                        return data
                     ActionChains(self.browser).release().perform()
                     refresh = self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "yidun_refresh")))
                     refresh.click()
                     time.sleep(0.6)
+            self.browser.quit()
             data.append(False)
             return data
-        except Exception:
+        except Exception as e:
+            print (e)
             self.browser.quit()
             a = yiDundriver(self.url)
             a.verifySlideCode()
-def getVin(dataTag,gid,pc):
+def getVin(n):
+    print n
+    time.sleep(3)
+    drv = yiDundriver('http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryCpData?dataTag=D&gid=1240848&pc=173')
+    while True:
+        data = drv.verifySlideCode()
 
-    drv = yiDundriver('http://www.miit-eidc.org.cn/miitxxgk/gonggao/xxgk/queryCpData?dataTag='+dataTag+'&gid='+gid+'&pc='+pc+'')
-
-    data = drv.verifySlideCode()
-
-    return data
+    #return data
+if __name__ == '__main__':
+    executor = ThreadPoolExecutor(max_workers=5)
+    #all_task = [ executor.submit(self.finVin,tag[lent],gid[lent],pc[lent]) for lent in range(len(tag))]
+    all_task = [ executor.submit(getVin,n) for n in range(0,10000)]
+    for future in as_completed(all_task):
+        data = future.result()
+        print("in main: get page {}s success".format(data))
