@@ -38,8 +38,13 @@ class yiDundriver(object):
         self.browser = webdriver.Firefox(firefox_options= self.firefoxOptions)'''
         #self.browser = webdriver.Edge()
         '''self.firefoxOptions = webdriver.FirefoxOptions()'''
+        ua =UserAgent()
+        uas=ua.firefox
+        print uas
+        profiel = webdriver.FirefoxProfile()
+        profiel.set_preference('general.useragent.override',uas)
+        self.browser=webdriver.Firefox(firefox_profile=profiel)
 
-        self.browser = webdriver.Chrome()
 
         #options.add_argument('user-agent="Mozilla/5.0 (iPod; U; CPU iPhone OS 2_1 like Mac OS X; ja-jp) AppleWebKit/525.18.1 (KHTML, like Gecko) Version/3.1.1 Mobile/5F137 Safari/525.20"')
         #self.browser = webdriver.Chrome(chrome_options= self.chromeOptions)
@@ -54,13 +59,8 @@ class yiDundriver(object):
         handles = self.browser.window_handles
         self.browser.switch_to_window(handles[1])'''
         self.browser.get(url)
-        with open("cookies.json", "r") as fp:
-            cookies = json.load(fp)
-        for cookie in cookies:
-            # cookie.pop('domain')  # 如果报domain无效的错误
-            self.browser.add_cookie(cookie)
-        print self.browser.get_cookies()
-        self.browser.delete_all_cookies()
+
+        #self.browser.delete_all_cookies()
         self.browser.implicitly_wait(5)
         self.count = 0
         self.wait = WebDriverWait(self.browser, time2wait)

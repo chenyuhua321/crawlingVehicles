@@ -143,8 +143,6 @@ class findVin(threading.Thread):
         alldata = []
         alldata.append(title)
         alldata.append(entity)
-
-        self.thread_stop =False
         besize = q.qsize()
         aftersize = besize
         while besize == aftersize:
@@ -218,7 +216,6 @@ class findVin(threading.Thread):
             pc=data[2]
             print len(tag)
             executor = ThreadPoolExecutor(max_workers=5)
-            #all_task = [ executor.submit(self.finVin,tag[lent],gid[lent],pc[lent]) for lent in range(len(tag))]
             all_task = [ executor.submit(self.realfindVin,tag[lent],gid[lent],pc[lent]) for lent in range(len(tag))]
 
             self.start()
