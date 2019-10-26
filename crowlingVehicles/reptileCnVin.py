@@ -219,6 +219,8 @@ def realmain(num):
     allbegin = time.time()
     g = getVehicleParam(q,num)
     flag = g.toexcel()
+    '''if flag:
+        g.start();'''
     time.sleep(1)                                  # 将队列加入类中
     allend = time.time()
     alltime = allend - allbegin
